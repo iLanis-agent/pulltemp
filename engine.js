@@ -22,8 +22,12 @@
     var targetF = tempUnit === 'C' ? c2f(targetValue) : targetValue;
     if (!(targetF >= 110 && targetF <= 200)) return null;
     var rise = carryover(item, ovenF); if (rise === null) return null;
-    var pull = targetF - rise;
-    return { riseF: rise, riseC: rise * 5 / 9, pullF: pull, pullC: f2c(pull), targetF: targetF, targetC: f2c(targetF), usda: it.usda, rest: it.rest, belowUsda: targetF < it.usda, clamped: ovenF < 300 || ovenF > 425, ovenF: ovenF, note: it.note };
+    var belowUsda = targetF < it.usda - 1e-9;
+    // USDA: the safe minimum must be read on a food thermometer BEFORE the food leaves the heat.
+    // So the pull temperature is never below the minimum. Carryover only matters for targets above it.
+    var wanted = targetF - rise, pull = belowUsda ? null : Math.max(wanted, it.usda), floorApplied = !belowUsda && wanted < it.usda - 1e-9;
+    var coastTo = pull === null ? null : pull + rise;
+    return { riseF: rise, riseC: rise * 5 / 9, pullF: pull, pullC: pull === null ? null : f2c(pull), coastF: coastTo, coastC: coastTo === null ? null : f2c(coastTo), targetF: targetF, targetC: f2c(targetF), usda: it.usda, rest: it.rest, belowUsda: belowUsda, floorApplied: floorApplied, clamped: ovenF < 300 || ovenF > 425, ovenF: ovenF, note: it.note };
   }
   root.PullTemp = { ITEMS: ITEMS, f2c: f2c, c2f: c2f, carryover: carryover, analyze: analyze };
   if (typeof module !== 'undefined') module.exports = root.PullTemp;
