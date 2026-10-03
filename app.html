@@ -20,13 +20,13 @@
   .stats { display:flex; gap:22px; flex-wrap:wrap; margin-top:12px; } .stats b { display:block; font-size:20px; } .muted { color:#b5aa9c; font-size:13px; }
   .err { color:#ff9c8a; } .note { font-size:12.5px; color:#8c8174; margin-top:6px; }
 
-  td.v { font-size:20px; } .warn { color:#ffb347; }
+  td.v { font-size:20px; } .safe { background:#1f3a2a; border-radius:10px; padding:12px; margin-bottom:10px; } .est { background:#2f2a1a; border-radius:10px; padding:12px; margin-bottom:10px; } .bad { background:#5a2424; border-radius:10px; padding:12px; margin-bottom:10px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Pull<span>Temp</span></h1>
-  <div class="sub">Meat keeps cooking after it leaves the heat. Find the temperature to pull it at.</div>
+  <div class="sub">Meat keeps cooking after it leaves the heat. Get the USDA safe minimum and a carryover estimate for your doneness target.</div>
   <div class="card">
     <div class="grid">
       <div><label>What</label><select id="item"></select></div>
@@ -35,10 +35,10 @@
       <div><label>Final temperature you want</label><input id="target" value="145"></div>
       <div><label>Meat thermometer unit</label><select id="tunit"><option value="F">F</option><option value="C">C</option></select></div>
     </div>
-    <button id="p1">Pork chop, 145 F, 425 F oven</button><button id="p2">Chicken breast, 165 F, 300 F oven</button><button id="p3">Large roast, 145 F, 350 F oven</button><button id="p4">Salmon, 63 C, 200 C oven</button>
+    <button id="p1">Pork chop, 155 F, 300 F oven</button><button id="p2">Chicken breast, 165 F, 300 F oven</button><button id="p3">Large roast, 160 F, 325 F oven</button><button id="p4">Salmon, 63 C, 200 C oven</button>
   </div>
   <div class="card" id="out"></div>
-  <div class="note">Data: ThermoWorks carryover experiment, total temperature rise after pulling from a 300 F or 425 F oven (pork chop 150 g: 4.9 / 11.5 F, beef chunk 270 g: 8.4 / 13.2, pork loin 1.2 kg: 6.5 / 15.5, salmon 300 g: 7.3 / 19, chicken breast 200 g: 7.9 / 12.9). Between 300 and 425 F the rise is interpolated, outside it the nearest value is used. Your cut, shape and starting temperature will differ, so treat it as an estimate and keep the probe in during the rest. USDA FSIS minimums: 145 F plus a 3 minute rest for beef, pork, veal and lamb steaks, chops and roasts, 145 F for fish, 165 F for poultry. A final temperature below the USDA minimum is your call and carries a food-safety risk. Runs in your browser, nothing stored.</div>
+  <div class="note">Safety: USDA FSIS says to reach 145 F (62.8 C) as measured with a food thermometer before removing steaks, chops and roasts of beef, pork, lamb and veal from the heat, then rest at least 3 minutes. Fish is 145 F, poultry 165 F (73.9 C). Carryover is not a substitute for reaching these temperatures before removal, so this app never gives a pull temperature below them. Carryover data (ThermoWorks experiment, total rise after pulling from a 300 F or 425 F oven): pork chop 150 g 4.9 / 11.5 F, beef chunk 270 g 8.4 / 13.2, pork loin 1.2 kg 6.5 / 15.5, salmon 300 g 7.3 / 19, chicken breast 200 g 7.9 / 12.9. It is interpolated between 300 and 425 F and clamped outside, and your cut will differ. Runs in your browser, nothing stored.</div>
 </div>
 <script src="engine.js"></script>
 <script>
@@ -49,18 +49,24 @@
   function render() {
     var r = P.analyze($('item').value, parseFloat($('oven').value), $('ounit').value, parseFloat($('target').value), $('tunit').value);
     if (!r) { $('out').innerHTML = '<div class="err">Enter an oven temperature of 250 to 475 F (121 to 246 C) and a final temperature of 110 to 200 F (43 to 93 C).</div>'; return; }
-    var C = $('tunit').value === 'C', pull = C ? f(r.pullC, 1) + ' C' : f(r.pullF, 1) + ' F', rise = C ? f(r.riseC, 1) + ' C' : f(r.riseF, 1) + ' F', alt = C ? f(r.pullF, 1) + ' F' : f(r.pullC, 1) + ' C';
-    var msgs = [];
-    if (r.belowUsda) msgs.push('<span class="warn">Your final temperature is below the USDA minimum of ' + r.usda + ' F (' + f(P.f2c(r.usda), 1) + ' C)' + (r.rest ? ' with a ' + r.rest + ' minute rest' : '') + '.</span>');
-    else if (r.rest) msgs.push('USDA asks for ' + r.rest + ' minutes of rest at this temperature.');
-    if (r.usda === 165) msgs.push('For poultry, confirm the probe reaches 165 F (73.9 C) in the thickest part during the rest. If it does not, put it back.');
-    if (r.clamped) msgs.push('Your oven is outside the 300 to 425 F range that was measured, so the nearest measured value is used.');
-    $('out').innerHTML = '<table><tr><th>Pull it off the heat at</th><th>Expected carryover</th></tr><tr><td class="v">' + pull + '<div class="muted">' + alt + '</div></td><td class="v">+' + rise + '<div class="muted">' + r.note + '</div></td></tr></table>' +
-      '<div class="stats"><div><span class="muted">Final temperature</span><b>' + (C ? f(r.targetC, 1) + ' C' : f(r.targetF, 1) + ' F') + '</b></div></div>' + msgs.map(function (m) { return '<div class="note">' + m + '</div>'; }).join('');
+    var C = $('tunit').value === 'C';
+    function T(f, c) { return C ? f2(c) + ' C' : f2(f) + ' F'; }
+    function f2(x) { return x.toFixed(1); }
+    var usdaLine = 'Reach <b>' + T(r.usda, P.f2c(r.usda)) + '</b> on a food thermometer <b>before you remove the food from the heat</b>' + (r.rest ? ', then let it rest at least ' + r.rest + ' minutes before carving or eating' : '') + '.';
+    var html = '<div class="safe"><div class="muted">USDA safe minimum (not an estimate)</div><div>' + usdaLine + '</div></div>';
+    if (r.belowUsda) {
+      html += '<div class="bad">Your final temperature of ' + T(r.targetF, r.targetC) + ' is below the USDA safe minimum, so this app will not give a pull temperature for it and it is not USDA-safe. Cooking to a lower temperature is your own choice and carries a food-safety risk.</div>' +
+        '<div class="est"><div class="muted">Culinary estimate only</div><div>From this oven, meat of this size has been measured to climb about <b>+' + (C ? f2(r.riseC) + ' C' : f2(r.riseF) + ' F') + '</b> after leaving the heat (' + r.note + ').</div></div>';
+    } else {
+      html += '<div class="est"><div class="muted">Culinary estimate (your doneness target, not a safety rule)</div><table><tr><th>Remove from the heat at</th><th>Expected carryover</th><th>Likely peak</th></tr><tr><td class="v">' + T(r.pullF, r.pullC) + '</td><td class="v">+' + (C ? f2(r.riseC) + ' C' : f2(r.riseF) + ' F') + '</td><td class="v">' + T(r.coastF, r.coastC) + '</td></tr></table>' +
+        (r.floorApplied ? '<div class="note">Your target of ' + T(r.targetF, r.targetC) + ' would need you to pull below the USDA minimum, so the pull temperature is held at the minimum. It will probably end up near ' + T(r.coastF, r.coastC) + ', which is more done than you asked for. A lower oven temperature gives less carryover.</div>' : '<div class="note">Pull at ' + T(r.pullF, r.pullC) + ' only because that is already at or above the USDA minimum. Carryover is an estimate from ' + r.note.toLowerCase() + ', so keep the probe in and check.</div>') + '</div>';
+    }
+    if (r.clamped) html += '<div class="note">Your oven is outside the 300 to 425 F range that was measured, so the nearest measured carryover is used.</div>';
+    $('out').innerHTML = html;
   }
   function set(item, oven, ou, target, tu) { $('item').value = item; $('oven').value = oven; $('ounit').value = ou; $('target').value = target; $('tunit').value = tu; render(); }
   ['oven', 'target'].forEach(function (i) { $(i).oninput = render; }); ['item', 'ounit', 'tunit'].forEach(function (i) { $(i).onchange = render; });
-  $('p1').onclick = function () { set('chop', 425, 'F', 145, 'F'); }; $('p2').onclick = function () { set('chicken', 300, 'F', 165, 'F'); }; $('p3').onclick = function () { set('roast', 350, 'F', 145, 'F'); }; $('p4').onclick = function () { set('fish', 200, 'C', 63, 'C'); };
+  $('p1').onclick = function () { set('chop', 300, 'F', 155, 'F'); }; $('p2').onclick = function () { set('chicken', 300, 'F', 165, 'F'); }; $('p3').onclick = function () { set('roast', 325, 'F', 160, 'F'); }; $('p4').onclick = function () { set('fish', 200, 'C', 63, 'C'); };
   render();
 })();
 </script>
