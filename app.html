@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PullTemp - when to pull meat off the heat</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:#1c1a14; color:#f3ede6; line-height:1.5; }
+  .wrap { max-width:700px; margin:0 auto; padding:26px 16px 50px; }
+  h1 { font-size:28px; } h1 span { color:#ffb347; }
+  .sub { color:#b5aa9c; margin:6px 0 16px; }
+  .card { background:#2a2619; border-radius:14px; padding:14px; margin-bottom:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
+  label { font-size:12px; color:#b5aa9c; display:block; margin-bottom:3px; }
+  input,select { width:100%; background:#1c1a14; color:#f3ede6; border:1px solid #574f48; border-radius:8px; padding:8px; font-size:15px; font-family:inherit; }
+  button { background:#473f27; color:#f3ede6; border:0; padding:8px 14px; border-radius:8px; cursor:pointer; font-size:14px; margin-right:6px; margin-top:10px; }
+  table { width:100%; border-collapse:collapse; } td,th { text-align:left; padding:8px 4px; border-bottom:1px solid #433c36; } th { font-size:12px; color:#b5aa9c; font-weight:600; }
+  td.v { font-size:22px; font-weight:800; color:#ffb347; } tr.me td.v { color:#f3ede6; }
+  .stats { display:flex; gap:22px; flex-wrap:wrap; margin-top:12px; } .stats b { display:block; font-size:20px; } .muted { color:#b5aa9c; font-size:13px; }
+  .err { color:#ff9c8a; } .note { font-size:12.5px; color:#8c8174; margin-top:6px; }
+
+  td.v { font-size:20px; } .warn { color:#ffb347; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pull<span>Temp</span></h1>
+  <div class="sub">Meat keeps cooking after it leaves the heat. Find the temperature to pull it at.</div>
+  <div class="card">
+    <div class="grid">
+      <div><label>What</label><select id="item"></select></div>
+      <div><label>Oven temperature</label><input id="oven" value="425"></div>
+      <div><label>Oven unit</label><select id="ounit"><option value="F">F</option><option value="C">C</option></select></div>
+      <div><label>Final temperature you want</label><input id="target" value="145"></div>
+      <div><label>Meat thermometer unit</label><select id="tunit"><option value="F">F</option><option value="C">C</option></select></div>
+    </div>
+    <button id="p1">Pork chop, 145 F, 425 F oven</button><button id="p2">Chicken breast, 165 F, 300 F oven</button><button id="p3">Large roast, 145 F, 350 F oven</button><button id="p4">Salmon, 63 C, 200 C oven</button>
+  </div>
+  <div class="card" id="out"></div>
+  <div class="note">Data: ThermoWorks carryover experiment, total temperature rise after pulling from a 300 F or 425 F oven (pork chop 150 g: 4.9 / 11.5 F, beef chunk 270 g: 8.4 / 13.2, pork loin 1.2 kg: 6.5 / 15.5, salmon 300 g: 7.3 / 19, chicken breast 200 g: 7.9 / 12.9). Between 300 and 425 F the rise is interpolated, outside it the nearest value is used. Your cut, shape and starting temperature will differ, so treat it as an estimate and keep the probe in during the rest. USDA FSIS minimums: 145 F plus a 3 minute rest for beef, pork, veal and lamb steaks, chops and roasts, 145 F for fish, 165 F for poultry. A final temperature below the USDA minimum is your call and carries a food-safety risk. Runs in your browser, nothing stored.</div>
+</div>
+<script src="engine.js"></script>
+<script>
+(function () {
+  var P = window.PullTemp, $ = function (i) { return document.getElementById(i); };
+  Object.keys(P.ITEMS).forEach(function (k) { var o = document.createElement('option'); o.value = k; o.textContent = P.ITEMS[k].label; $('item').appendChild(o); });
+  function f(x, d) { return x.toFixed(d); }
+  function render() {
+    var r = P.analyze($('item').value, parseFloat($('oven').value), $('ounit').value, parseFloat($('target').value), $('tunit').value);
+    if (!r) { $('out').innerHTML = '<div class="err">Enter an oven temperature of 250 to 475 F (121 to 246 C) and a final temperature of 110 to 200 F (43 to 93 C).</div>'; return; }
+    var C = $('tunit').value === 'C', pull = C ? f(r.pullC, 1) + ' C' : f(r.pullF, 1) + ' F', rise = C ? f(r.riseC, 1) + ' C' : f(r.riseF, 1) + ' F', alt = C ? f(r.pullF, 1) + ' F' : f(r.pullC, 1) + ' C';
+    var msgs = [];
+    if (r.belowUsda) msgs.push('<span class="warn">Your final temperature is below the USDA minimum of ' + r.usda + ' F (' + f(P.f2c(r.usda), 1) + ' C)' + (r.rest ? ' with a ' + r.rest + ' minute rest' : '') + '.</span>');
+    else if (r.rest) msgs.push('USDA asks for ' + r.rest + ' minutes of rest at this temperature.');
+    if (r.usda === 165) msgs.push('For poultry, confirm the probe reaches 165 F (73.9 C) in the thickest part during the rest. If it does not, put it back.');
+    if (r.clamped) msgs.push('Your oven is outside the 300 to 425 F range that was measured, so the nearest measured value is used.');
+    $('out').innerHTML = '<table><tr><th>Pull it off the heat at</th><th>Expected carryover</th></tr><tr><td class="v">' + pull + '<div class="muted">' + alt + '</div></td><td class="v">+' + rise + '<div class="muted">' + r.note + '</div></td></tr></table>' +
+      '<div class="stats"><div><span class="muted">Final temperature</span><b>' + (C ? f(r.targetC, 1) + ' C' : f(r.targetF, 1) + ' F') + '</b></div></div>' + msgs.map(function (m) { return '<div class="note">' + m + '</div>'; }).join('');
+  }
+  function set(item, oven, ou, target, tu) { $('item').value = item; $('oven').value = oven; $('ounit').value = ou; $('target').value = target; $('tunit').value = tu; render(); }
+  ['oven', 'target'].forEach(function (i) { $(i).oninput = render; }); ['item', 'ounit', 'tunit'].forEach(function (i) { $(i).onchange = render; });
+  $('p1').onclick = function () { set('chop', 425, 'F', 145, 'F'); }; $('p2').onclick = function () { set('chicken', 300, 'F', 165, 'F'); }; $('p3').onclick = function () { set('roast', 350, 'F', 145, 'F'); }; $('p4').onclick = function () { set('fish', 200, 'C', 63, 'C'); };
+  render();
+})();
+</script>
+</body>
+</html>
